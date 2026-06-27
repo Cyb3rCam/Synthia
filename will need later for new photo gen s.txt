@@ -1,0 +1,6 @@
+will need later for new photo gen site:
+
+
+{{ $('Webhook').item.json.body['What would you want to see'] }}
+
+

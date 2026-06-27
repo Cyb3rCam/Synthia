@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Synthia — AI Image Generation</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --glass: rgba(255, 255, 255, 0.07);
+      --glass-border: rgba(255, 255, 255, 0.12);
+      --glass-hover: rgba(255, 255, 255, 0.11);
+      --accent: #a78bfa;
+      --accent-2: #818cf8;
+      --accent-glow: rgba(167, 139, 250, 0.25);
+      --text: #f1f0ff;
+      --text-muted: rgba(241, 240, 255, 0.5);
+      --text-dim: rgba(241, 240, 255, 0.3);
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+
+    html, body {
+      min-height: 100vh;
+      font-family: 'Inter', sans-serif;
+      background: #0a0812;
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* Ambient background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 10%, rgba(139, 92, 246, 0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 80%, rgba(99, 102, 241, 0.14) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(167, 139, 250, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Subtle grid texture */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Nav */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 2.5rem;
+      border-bottom: 1px solid var(--glass-border);
+      background: rgba(10, 8, 18, 0.6);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #c4b5fd, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .logo span {
+      font-weight: 300;
+      opacity: 0.7;
+    }
+
+    .nav-tabs {
+      display: flex;
+      gap: 0.25rem;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 100px;
+      padding: 0.3rem;
+    }
+
+    .nav-tab {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 0.4rem 1rem;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .nav-tab.active {
+      background: rgba(167, 139, 250, 0.2);
+      color: var(--accent);
+      border: 1px solid rgba(167, 139, 250, 0.3);
+    }
+
+    .nav-tab:hover:not(.active) {
+      color: var(--text);
+      background: var(--glass-hover);
+    }
+
+    .nav-badge {
+      font-size: 0.7rem;
+      background: var(--accent-glow);
+      color: var(--accent);
+      border: 1px solid rgba(167, 139, 250, 0.3);
+      padding: 0.2rem 0.6rem;
+      border-radius: 100px;
+    }
+
+    /* Main layout */
+    main {
+      flex: 1;
+      padding: 2.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Generate view */
+    #view-generate { display: flex; flex-direction: column; gap: 2rem; }
+    #view-history { display: none; flex-direction: column; gap: 1.5rem; }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 2rem 0 1rem;
+    }
+
+    .hero-eyebrow {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      opacity: 0.8;
+    }
+
+    .hero h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.75rem;
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, #c4b5fd 0%, #818cf8 50%, #6ee7b7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero p {
+      color: var(--text-muted);
+      font-size: 1rem;
+      max-width: 480px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* Glass card */
+    .glass-card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+    }
+
+    /* Prompt section */
+    .prompt-card {
+      padding: 1.5rem;
+    }
+
+    .prompt-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .prompt-input-wrap {
+      position: relative;
+    }
+
+    textarea#prompt {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      padding: 1rem 1.25rem;
+      resize: none;
+      min-height: 100px;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+
+    textarea#prompt::placeholder { color: var(--text-dim); }
+    textarea#prompt:focus { border-color: rgba(167, 139, 250, 0.5); }
+
+    .prompt-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 1rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .char-count {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .generate-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: linear-gradient(135deg, rgba(167, 139, 250, 0.3), rgba(129, 140, 248, 0.3));
+      border: 1px solid rgba(167, 139, 250, 0.4);
+      color: #e0d9ff;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.875rem;
+      font-weight: 600;
+      padding: 0.65rem 1.5rem;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .generate-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, rgba(167, 139, 250, 0.45), rgba(129, 140, 248, 0.45));
+      border-color: rgba(167, 139, 250, 0.6);
+      box-shadow: 0 0 24px rgba(167, 139, 250, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .generate-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-icon {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(167, 139, 250, 0.3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Output area */
+    .output-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 768px) {
+      .output-section { grid-template-columns: 1fr; }
+      nav { padding: 1rem 1.25rem; }
+      main { padding: 1.5rem 1.25rem; }
+    }
+
+    .result-card {
+      aspect-ratio: 9/16;
+      max-height: 520px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .result-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .result-placeholder svg {
+      width: 40px;
+      height: 40px;
+      opacity: 0.4;
+    }
+
+    .result-placeholder p {
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    .result-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: calc(var(--radius) - 1px);
+      display: none;
+    }
+
+    .generating-overlay {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      background: rgba(10, 8, 18, 0.5);
+      backdrop-filter: blur(4px);
+      border-radius: calc(var(--radius) - 1px);
+    }
+
+    .generating-overlay p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .big-spinner {
+      width: 36px;
+      height: 36px;
+      border: 2px solid rgba(167, 139, 250, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* Details panel */
+    .details-card {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .detail-block label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: block;
+      margin-bottom: 0.4rem;
+    }
+
+    .detail-block p {
+      font-size: 0.875rem;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .detail-block p.empty {
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    .action-row {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 0.45rem 0.9rem;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .action-btn:hover:not(:disabled) {
+      background: var(--glass-hover);
+      color: var(--text);
+      border-color: rgba(255,255,255,0.2);
+    }
+
+    .action-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .action-btn svg {
+      width: 13px;
+      height: 13px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 0.3rem 0.75rem;
+      border-radius: 100px;
+    }
+
+    .status-pill.idle {
+      background: rgba(255,255,255,0.05);
+      color: var(--text-dim);
+      border: 1px solid var(--glass-border);
+    }
+
+    .status-pill.generating {
+      background: rgba(167, 139, 250, 0.1);
+      color: var(--accent);
+      border: 1px solid rgba(167, 139, 250, 0.2);
+    }
+
+    .status-pill.done {
+      background: rgba(110, 231, 183, 0.1);
+      color: #6ee7b7;
+      border: 1px solid rgba(110, 231, 183, 0.2);
+    }
+
+    .status-pill.error {
+      background: rgba(248, 113, 113, 0.1);
+      color: #f87171;
+      border: 1px solid rgba(248, 113, 113, 0.2);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .status-dot.pulse {
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--glass-border);
+    }
+
+    /* History view */
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .history-header h2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+
+    .clear-btn {
+      background: none;
+      border: 1px solid rgba(248, 113, 113, 0.2);
+      color: #f87171;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem;
+      padding: 0.35rem 0.8rem;
+      border-radius: 100px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .clear-btn:hover {
+      background: rgba(248, 113, 113, 0.1);
+    }
+
+    .history-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .history-item {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .history-item:hover {
+      border-color: rgba(167, 139, 250, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .history-thumb {
+      width: 100%;
+      aspect-ratio: 9/16;
+      max-height: 260px;
+      object-fit: cover;
+      display: block;
+      background: rgba(0,0,0,0.3);
+    }
+
+    .history-thumb-placeholder {
+      width: 100%;
+      aspect-ratio: 9/16;
+      max-height: 260px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.2);
+      color: var(--text-dim);
+      font-size: 0.7rem;
+    }
+
+    .history-meta {
+      padding: 0.75rem 1rem;
+    }
+
+    .history-prompt {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 0.4rem;
+    }
+
+    .history-time {
+      font-size: 0.68rem;
+      color: var(--text-dim);
+    }
+
+    .history-empty {
+      text-align: center;
+      padding: 4rem 1rem;
+      color: var(--text-dim);
+    }
+
+    .history-empty svg {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 1rem;
+      opacity: 0.3;
+      display: block;
+    }
+
+    .history-empty p { font-size: 0.875rem; }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(30, 25, 50, 0.95);
+      border: 1px solid var(--glass-border);
+      color: var(--text);
+      font-size: 0.8rem;
+      padding: 0.6rem 1.2rem;
+      border-radius: 100px;
+      backdrop-filter: blur(20px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Error message */
+    .error-msg {
+      background: rgba(248, 113, 113, 0.08);
+      border: 1px solid rgba(248, 113, 113, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      font-size: 0.8rem;
+      color: #f87171;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <nav>
+      <div class="logo">Syn<span>thia</span></div>
+      <div class="nav-tabs">
+        <button class="nav-tab active" onclick="switchView('generate')">Generate</button>
+        <button class="nav-tab" onclick="switchView('history')">History <span class="nav-badge" id="history-count">0</span></button>
+      </div>
+      <div style="width: 80px;"></div>
+    </nav>
+
+    <main>
+      <!-- Generate View -->
+      <div id="view-generate">
+        <div class="hero">
+          <p class="hero-eyebrow">Annovacore Technologies</p>
+          <h1>Create images with <em>pure thought</em></h1>
+          <p>Describe anything. Synthia turns your words into premium, scroll-stopping visuals in seconds.</p>
+        </div>
+
+        <div class="glass-card prompt-card">
+          <p class="prompt-label">Your prompt</p>
+          <div class="prompt-input-wrap">
+            <textarea id="prompt" rows="4" placeholder="A cinematic shot of a neon-lit Tokyo alley at 3am, rain-soaked streets reflecting violet light, shallow depth of field..."></textarea>
+          </div>
+          <div class="prompt-footer">
+            <span class="char-count"><span id="char-count">0</span> characters</span>
+            <button class="generate-btn" id="generate-btn" onclick="generate()">
+              <svg class="btn-icon" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg>
+              Generate
+            </button>
+          </div>
+          <div class="error-msg" id="error-msg"></div>
+        </div>
+
+        <div class="output-section">
+          <div class="glass-card result-card" id="result-card">
+            <div class="result-placeholder" id="result-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                <path d="M21 15l-5-5L5 21"/>
+              </svg>
+              <p>Your image will appear here</p>
+            </div>
+            <div class="generating-overlay" id="generating-overlay">
+              <div class="big-spinner"></div>
+              <p>Generating your image...</p>
+            </div>
+            <img class="result-image" id="result-image" alt="Generated image" />
+          </div>
+
+          <div class="glass-card details-card">
+            <div class="detail-block">
+              <label>Status</label>
+              <span class="status-pill idle" id="status-pill">
+                <span class="status-dot"></span>
+                Ready
+              </span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="detail-block">
+              <label>Prompt used</label>
+              <p id="used-prompt" class="empty">No generation yet</p>
+            </div>
+
+            <div class="detail-block">
+              <label>Generated at</label>
+              <p id="gen-time" class="empty">—</p>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="detail-block">
+              <label>Actions</label>
+              <div class="action-row">
+                <button class="action-btn" id="btn-download" disabled onclick="downloadImage()">
+                  <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Download
+                </button>
+                <button class="action-btn" id="btn-share" disabled onclick="shareImage()">
+                  <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                  Share
+                </button>
+                <button class="action-btn" id="btn-copy-prompt" disabled onclick="copyPrompt()">
+                  <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Copy prompt
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History View -->
+      <div id="view-history">
+        <div class="history-header">
+          <h2>Generation history</h2>
+          <button class="clear-btn" onclick="clearHistory()">Clear all</button>
+        </div>
+        <div id="history-grid" class="history-grid"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const WEBHOOK_URL = 'https://image-gen-7t9e.onrender.com/webhook-test/image-gen';
+    const STORAGE_KEY = 'synthia_history';
+
+    let currentImageUrl = null;
+    let currentPrompt = '';
+    let history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+    const promptEl = document.getElementById('prompt');
+    const charCountEl = document.getElementById('char-count');
+    const generateBtn = document.getElementById('generate-btn');
+    const resultImage = document.getElementById('result-image');
+    const resultPlaceholder = document.getElementById('result-placeholder');
+    const generatingOverlay = document.getElementById('generating-overlay');
+    const statusPill = document.getElementById('status-pill');
+    const usedPrompt = document.getElementById('used-prompt');
+    const genTime = document.getElementById('gen-time');
+    const errorMsg = document.getElementById('error-msg');
+    const historyCountEl = document.getElementById('history-count');
+
+    promptEl.addEventListener('input', () => {
+      charCountEl.textContent = promptEl.value.length;
+    });
+
+    function switchView(view) {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+
+      if (view === 'generate') {
+        document.getElementById('view-generate').style.display = 'flex';
+        document.getElementById('view-history').style.display = 'none';
+      } else {
+        document.getElementById('view-generate').style.display = 'none';
+        document.getElementById('view-history').style.display = 'flex';
+        renderHistory();
+      }
+    }
+
+    function setStatus(type, text) {
+      statusPill.className = `status-pill ${type}`;
+      const dot = type === 'generating' ? '<span class="status-dot pulse"></span>' : '<span class="status-dot"></span>';
+      statusPill.innerHTML = `${dot} ${text}`;
+    }
+
+    async function generate() {
+      const prompt = promptEl.value.trim();
+      if (!prompt) { showToast('Enter a prompt first'); return; }
+
+      currentPrompt = prompt;
+      setGenerating(true);
+      errorMsg.style.display = 'none';
+      setStatus('generating', 'Generating...');
+
+      try {
+        const res = await fetch(WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 'What would you want to see': prompt })
+        });
+
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+
+        const data = await res.json();
+        const imageUrl = data.imageUrl || data.image_url || data.url || data.output || (data[0] && data[0].url);
+
+        if (!imageUrl) throw new Error('No image URL in response');
+
+        showResult(imageUrl, prompt);
+        saveToHistory(prompt, imageUrl);
+        setStatus('done', 'Done');
+
+      } catch (err) {
+        setGenerating(false);
+        setStatus('error', 'Failed');
+        errorMsg.textContent = `Couldn't generate: ${err.message}`;
+        errorMsg.style.display = 'block';
+      }
+    }
+
+    function setGenerating(loading) {
+      generateBtn.disabled = loading;
+      generateBtn.innerHTML = loading
+        ? '<div class="spinner"></div> Generating...'
+        : '<svg class="btn-icon" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg> Generate';
+
+      generatingOverlay.style.display = loading ? 'flex' : 'none';
+
+      if (loading) {
+        resultPlaceholder.style.display = 'none';
+      }
+    }
+
+    function showResult(url, prompt) {
+      currentImageUrl = url;
+      setGenerating(false);
+
+      resultImage.src = url;
+      resultImage.style.display = 'block';
+      resultPlaceholder.style.display = 'none';
+
+      usedPrompt.textContent = prompt;
+      usedPrompt.classList.remove('empty');
+      genTime.textContent = new Date().toLocaleString();
+      genTime.classList.remove('empty');
+
+      document.getElementById('btn-download').disabled = false;
+      document.getElementById('btn-share').disabled = false;
+      document.getElementById('btn-copy-prompt').disabled = false;
+    }
+
+    function saveToHistory(prompt, imageUrl) {
+      history.unshift({ prompt, imageUrl, createdAt: new Date().toISOString() });
+      if (history.length > 50) history.pop();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+      updateHistoryCount();
+    }
+
+    function updateHistoryCount() {
+      historyCountEl.textContent = history.length;
+    }
+
+    function renderHistory() {
+      const grid = document.getElementById('history-grid');
+      if (!history.length) {
+        grid.innerHTML = `
+          <div class="history-empty" style="grid-column: 1/-1;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+              <path d="M21 15l-5-5L5 21"/>
+            </svg>
+            <p>No generations yet — create something</p>
+          </div>`;
+        return;
+      }
+
+      grid.innerHTML = history.map((item, i) => `
+        <div class="history-item" onclick="loadFromHistory(${i})">
+          ${item.imageUrl
+            ? `<img class="history-thumb" src="${item.imageUrl}" alt="Generated image" loading="lazy" />`
+            : `<div class="history-thumb-placeholder">No preview</div>`}
+          <div class="history-meta">
+            <p class="history-prompt">${escapeHtml(item.prompt)}</p>
+            <p class="history-time">${new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function loadFromHistory(index) {
+      const item = history[index];
+      switchViewTo('generate');
+      promptEl.value = item.prompt;
+      charCountEl.textContent = item.prompt.length;
+      if (item.imageUrl) showResult(item.imageUrl, item.prompt);
+    }
+
+    function switchViewTo(view) {
+      document.querySelectorAll('.nav-tab').forEach((t, i) => {
+        t.classList.toggle('active', (view === 'generate' && i === 0) || (view === 'history' && i === 1));
+      });
+      document.getElementById('view-generate').style.display = view === 'generate' ? 'flex' : 'none';
+      document.getElementById('view-history').style.display = view === 'history' ? 'flex' : 'none';
+    }
+
+    function clearHistory() {
+      if (!history.length) return;
+      history = [];
+      localStorage.removeItem(STORAGE_KEY);
+      updateHistoryCount();
+      renderHistory();
+      showToast('History cleared');
+    }
+
+    function downloadImage() {
+      if (!currentImageUrl) return;
+      const a = document.createElement('a');
+      a.href = currentImageUrl;
+      a.download = `synthia-${Date.now()}.png`;
+      a.click();
+      showToast('Downloading image...');
+    }
+
+    async function shareImage() {
+      if (!currentImageUrl) return;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: 'Synthia — AI Image', url: currentImageUrl });
+        } catch {}
+      } else {
+        await navigator.clipboard.writeText(currentImageUrl);
+        showToast('Image URL copied to clipboard');
+      }
+    }
+
+    async function copyPrompt() {
+      if (!currentPrompt) return;
+      await navigator.clipboard.writeText(currentPrompt);
+      showToast('Prompt copied');
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    updateHistoryCount();
+  </script>
+</body>
+</html>
