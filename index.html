@@ -821,10 +821,17 @@
 
         if (!res.ok) throw new Error(`Server error: ${res.status}`);
 
-        const data = await res.json();
-        const imageUrl = data.imageUrl || data.image_url || data.url || data.output || (data[0] && data[0].url);
+        const contentType = res.headers.get('content-type') || '';
+        let imageUrl;
 
-        if (!imageUrl) throw new Error('No image URL in response');
+        if (contentType.includes('image') || contentType.includes('octet-stream')) {
+          const blob = await res.blob();
+          imageUrl = URL.createObjectURL(blob);
+        } else {
+          const data = await res.json();
+          imageUrl = data.imageUrl || data.image_url || data.url || data.output || (data[0] && data[0].url);
+          if (!imageUrl) throw new Error('No image URL in response');
+        }
 
         showResult(imageUrl, prompt);
         saveToHistory(prompt, imageUrl);

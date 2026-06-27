@@ -4,3 +4,6 @@ will need later for new photo gen site:
 {{ $('Webhook').item.json.body['What would you want to see'] }}
 
 
+git remote add origin https://github.com/Cyb3rCam/Synthia.git
+git branch -M main
+git push -u origin main
